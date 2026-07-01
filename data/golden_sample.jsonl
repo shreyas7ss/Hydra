@@ -1,0 +1,9 @@
+{"query": "what was the operating margin in 2023?", "relevant_ids": ["fin-2023-margin"]}
+{"query": "compare operating margin between 2022 and 2023", "relevant_ids": ["fin-2023-margin", "fin-2022-revenue"]}
+{"query": "what was total net revenue in fiscal 2023?", "relevant_ids": ["fin-2023-revenue"]}
+{"query": "what net revenue did the company report in 2022?", "relevant_ids": ["fin-2022-revenue"]}
+{"query": "what does clause 7.2 limitation of liability say?", "relevant_ids": ["legal-clause-7-2"]}
+{"query": "how can the agreement be terminated for breach?", "relevant_ids": ["legal-clause-9-1"]}
+{"query": "how much paid time off do employees accrue?", "relevant_ids": ["hr-pto-policy"]}
+{"query": "how does the company recognize revenue?", "relevant_ids": ["footnote-revenue-recognition"]}
+{"query": "what supply chain risks does the company face?", "relevant_ids": ["risk-supply-chain"]}

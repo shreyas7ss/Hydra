@@ -23,6 +23,7 @@ dev = ["pytest>=8.0"]
 
 [project.scripts]
 hydra = "hydra.cli:main"
+hydra-eval = "hydra.eval.cli:main"
 
 [build-system]
 requires = ["hatchling"]

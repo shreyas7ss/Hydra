@@ -45,6 +45,20 @@ uv run hydra --demo --corpus docs.jsonl "your question"
 uv run hydra --corpus docs.jsonl "what was net revenue in 2023?"
 ```
 
+## Evaluate (Phase 0 harness)
+
+Score retrieval quality + the "Retrieval Tax" (latency, tokens) against a golden set:
+
+```bash
+uv run hydra-eval --demo                       # built-in golden set over the sample corpus
+uv run hydra-eval --demo --dataset gold.jsonl --corpus docs.jsonl
+uv run hydra-eval --demo --min-hit-rate 0.7    # CI regression gate (non-zero exit on fail)
+```
+
+Reports Hit Rate / MRR / recall@k / precision@k, latency p50/p95, and LLM calls/tokens.
+Generation metrics (faithfulness, answer-relevance) activate once Phase 4 produces answers.
+Flip `HYDRA_ENABLE_DENSE` / `HYDRA_ENABLE_SPARSE` to A/B retrieval configurations.
+
 ## Develop / test
 
 ```bash
