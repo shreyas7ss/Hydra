@@ -37,6 +37,19 @@ class Settings:
     # an under-retrieved fast-path result.
     intent_confidence_floor: float = 0.5
 
+    # --- Phase 2: Coarse Retrieval & Precision Fusion ---
+    embedding_provider: str = "openai"            # swappable; demo -> "hashing"
+    embedding_model: str = "text-embedding-3-large"
+    embedding_dim: int = 256                       # used by the offline hashing embedder
+    reranker_provider: str = "lexical"             # "cross-encoder" needs the `rerank` extra
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    enable_dense: bool = True
+    enable_sparse: bool = True
+    retrieval_top_k: int = 10                      # final candidates returned to the generator
+    per_query_top_k: int = 20                      # candidates pulled per retriever per query
+    fusion_k: int = 60                             # Reciprocal Rank Fusion constant (k=60)
+    rerank_pool: int = 50                          # top-N fused docs sent to the reranker
+
     @classmethod
     def from_env(cls) -> "Settings":
         # Load .env if python-dotenv is available; never hard-fail without it.
@@ -57,4 +70,15 @@ class Settings:
             enable_hyde=_flag("HYDRA_ENABLE_HYDE", True),
             multi_query_count=int(os.getenv("HYDRA_MULTI_QUERY_COUNT", "3")),
             intent_confidence_floor=float(os.getenv("HYDRA_INTENT_CONFIDENCE_FLOOR", "0.5")),
+            embedding_provider=os.getenv("HYDRA_EMBEDDING_PROVIDER", "openai"),
+            embedding_model=os.getenv("HYDRA_EMBEDDING_MODEL", "text-embedding-3-large"),
+            embedding_dim=int(os.getenv("HYDRA_EMBEDDING_DIM", "256")),
+            reranker_provider=os.getenv("HYDRA_RERANKER_PROVIDER", "lexical"),
+            reranker_model=os.getenv("HYDRA_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"),
+            enable_dense=_flag("HYDRA_ENABLE_DENSE", True),
+            enable_sparse=_flag("HYDRA_ENABLE_SPARSE", True),
+            retrieval_top_k=int(os.getenv("HYDRA_RETRIEVAL_TOP_K", "10")),
+            per_query_top_k=int(os.getenv("HYDRA_PER_QUERY_TOP_K", "20")),
+            fusion_k=int(os.getenv("HYDRA_FUSION_K", "60")),
+            rerank_pool=int(os.getenv("HYDRA_RERANK_POOL", "50")),
         )
