@@ -124,6 +124,38 @@ class EchoLLM:
             return json.dumps(subs or [q])
         if "hyde" in system:
             return f"A relevant document would state that, regarding '{q}', the answer is as follows: ..."
+        if "retrieval_eval" in system:
+            # Grade context relevance by content-word overlap (stopwords dropped).
+            from hydra.retrieval.text import tokenize
+
+            question_part = user.split("Context:", 1)[0]
+            ctx_terms = set(tokenize(user.split("Context:", 1)[-1]))
+            q_terms = set(tokenize(question_part))
+            ratio = len(q_terms & ctx_terms) / len(q_terms) if q_terms else 0.0
+            confidence = "high" if ratio >= 0.5 else "medium" if ratio >= 0.2 else "low"
+            return json.dumps(
+                {"confidence": confidence, "score": round(ratio, 3),
+                 "reasoning": "offline heuristic retrieval grader"}
+            )
+        if "generate" in system:
+            # Ground the answer in the supplied context (first passage).
+            ctx = user.split("Context:", 1)[-1].strip()
+            first = ctx.split("\n", 1)[0].strip() if ctx else ""
+            if not first:
+                return "I don't have enough retrieved context to answer that."
+            return f"Based on the retrieved context: {first[:220]}"
+        if "reflect" in system:
+            # Faithful if the answer's content words are supported by the context.
+            from hydra.retrieval.text import tokenize
+
+            answer_part = user.split("Answer:", 1)[-1].split("Context:", 1)[0]
+            ctx_terms = set(tokenize(user.split("Context:", 1)[-1]))
+            a_terms = set(tokenize(answer_part))
+            faithful = bool(a_terms) and len(a_terms & ctx_terms) / len(a_terms) >= 0.5
+            return json.dumps(
+                {"faithful": faithful, "relevant": True,
+                 "critique": "offline heuristic reflection"}
+            )
         return ""
 
 

@@ -24,6 +24,16 @@ A vector + vectorless Retrieval-Augmented Generation system orchestrated with
 - Every candidate carries page/section metadata + which retriever lists surfaced it
   (audit trail).
 
+**Phase 4 — Corrective RAG (CRAG) + generation + Self-RAG** (done):
+
+- **CRAG quality gate** (`retrieval_evaluator`): an LLM grades retrieval high/medium/low.
+  High generates directly; medium/low triggers a bounded `secondary_retrieve` loop; exhausted
+  low confidence routes to `ask_user` rather than answering on weak evidence.
+- **Grounded generation** (`generate`): answers strictly from retrieved context and emits
+  citations (source/page/section).
+- **Self-RAG reflection** (`self_rag_reflect`): an LLM self-critique (faithful? relevant?);
+  an unfaithful answer loops back for a bounded regeneration.
+
 Providers/models are swappable behind protocols; the whole stack runs offline (hashing
 embedder + lexical reranker + demo LLM) so nothing requires an API key to develop/test.
 
@@ -77,6 +87,8 @@ src/hydra/
     router.py         route_intent + intent_router (the gate)
     transform.py      transform_query (multi-query / decompose / HyDE)
     downstream.py     hybrid_retrieve / direct_lookup (retriever-backed, stub if none)
+    crag.py           retrieval_evaluator / secondary_retrieve / ask_user / crag_router
+    generate.py       generate / self_rag_reflect / reflect_router
   retrieval/          Phase 2
     text.py           shared tokenizer
     documents.py      Document / ScoredDoc

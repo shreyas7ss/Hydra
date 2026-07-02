@@ -64,8 +64,9 @@ def test_evaluate_runs_over_golden_set():
     # Ops accounting is populated.
     assert report.llm["calls"] > 0
     assert report.latency["p95"] >= report.latency["p50"]
-    # No generator yet.
-    assert report.generation_active is False
+    # Phase 4 generator is wired: generation metrics are now active.
+    assert report.generation_active is True
+    assert "faithfulness" in report.aggregate
 
 
 def test_load_dataset_roundtrip(tmp_path):

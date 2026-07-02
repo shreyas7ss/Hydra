@@ -50,6 +50,11 @@ class Settings:
     fusion_k: int = 60                             # Reciprocal Rank Fusion constant (k=60)
     rerank_pool: int = 50                          # top-N fused docs sent to the reranker
 
+    # --- Phase 4: Corrective RAG + Self-RAG ---
+    crag_max_retries: int = 2                      # secondary-retrieval attempts before giving up
+    reflect_max_retries: int = 1                   # regenerations allowed on unfaithful answers
+    generation_context_k: int = 5                  # top candidates passed to the generator
+
     @classmethod
     def from_env(cls) -> "Settings":
         # Load .env if python-dotenv is available; never hard-fail without it.
@@ -81,4 +86,7 @@ class Settings:
             per_query_top_k=int(os.getenv("HYDRA_PER_QUERY_TOP_K", "20")),
             fusion_k=int(os.getenv("HYDRA_FUSION_K", "60")),
             rerank_pool=int(os.getenv("HYDRA_RERANK_POOL", "50")),
+            crag_max_retries=int(os.getenv("HYDRA_CRAG_MAX_RETRIES", "2")),
+            reflect_max_retries=int(os.getenv("HYDRA_REFLECT_MAX_RETRIES", "1")),
+            generation_context_k=int(os.getenv("HYDRA_GENERATION_CONTEXT_K", "5")),
         )

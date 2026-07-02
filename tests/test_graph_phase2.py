@@ -14,15 +14,23 @@ DOCS = [
     Document(id="pto", text="paid time off accrues at 1.5 days per month"),
 ]
 
+_GEN_REFLECT = {
+    "retrieval_eval": '{"confidence": "high", "score": 0.9, "reasoning": "on topic"}',
+    "generate": "Operating margin rose to 21.5 percent in 2023.",
+    "reflect": '{"faithful": true, "relevant": true, "critique": "grounded"}',
+}
+
 COMPLEX_LLM = ScriptedLLM({
     "intent_classification": '{"intent": "complex", "confidence": 0.8, "reasoning": "x"}',
     "multi_query": '["2023 operating margin", "margin expansion 2023"]',
     "decompose": '["what was operating margin in 2023?"]',
     "hyde": "operating margin in 2023 was 21.5 percent",
+    **_GEN_REFLECT,
 })
 
 DIRECT_LLM = ScriptedLLM({
     "intent_classification": '{"intent": "direct", "confidence": 0.95, "reasoning": "exact id"}',
+    **_GEN_REFLECT,
 })
 
 
@@ -39,7 +47,12 @@ def test_complex_path_returns_reranked_candidates():
     assert state["candidates"]
     assert state["candidates"][0]["id"] == "margin"
     nodes = [s["node"] for s in state["trace"]]
-    assert nodes == ["route_intent", "transform_query", "hybrid_retrieve"]
+    # Complex path runs the CRAG gate and generation to a grounded answer.
+    assert nodes[:4] == ["route_intent", "transform_query", "hybrid_retrieve", "retrieval_evaluator"]
+    assert "generate" in nodes
+    assert state["answer"]
+    assert state["citations"]
+    assert state["reflection"]["ok"] is True
 
 
 def test_direct_path_uses_bm25_fast_path():
@@ -48,3 +61,7 @@ def test_direct_path_uses_bm25_fast_path():
     assert state["retrieval_path"] == "bm25_sql_direct"
     assert state["candidates"][0]["id"] == "clause"
     assert state["candidates"][0]["sources"] == ["bm25"]
+    # Direct path still produces a grounded answer, skipping the CRAG evaluator.
+    nodes = [s["node"] for s in state["trace"]]
+    assert "retrieval_evaluator" not in nodes
+    assert state["answer"]

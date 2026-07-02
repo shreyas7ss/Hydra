@@ -56,6 +56,21 @@ def _print_result(query: str, state: dict) -> None:
     if state.get("intent_reasoning"):
         print(f"Reason: {state['intent_reasoning']}")
     print(f"Path:   {state.get('retrieval_path')}")
+    if state.get("retrieval_confidence"):
+        print(f"CRAG:   {state['retrieval_confidence']} confidence "
+              f"(score={state.get('retrieval_score', 0):.2f})")
+
+    if state.get("answer"):
+        print(f"\nAnswer: {state['answer']}")
+    if state.get("citations"):
+        cites = ", ".join(
+            f"{c.get('source', '?')} p.{c.get('page', '?')} sec.{c.get('section', '?')}"
+            for c in state["citations"]
+        )
+        print(f"Cited:  {cites}")
+    if state.get("reflection"):
+        r = state["reflection"]
+        print(f"Self-RAG: faithful={r.get('faithful')} relevant={r.get('relevant')}")
 
     if state.get("expanded_queries"):
         print("\nMulti-query expansions:")

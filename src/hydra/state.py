@@ -39,11 +39,20 @@ class RAGState(TypedDict, total=False):
     hyde_doc: str                # Hypothetical Document — an embedding seed for Phase 2
     search_queries: list[str]    # final fan-out fed to retrieval (deduped)
 
-    # --- Downstream (stubbed until Phase 2/3) ---
+    # --- Phase 2: retrieval ---
     retrieval_path: str
     candidates: list[dict[str, Any]]
+
+    # --- Phase 4: Corrective RAG quality gate ---
+    retrieval_confidence: str        # "high" | "medium" | "low"
+    retrieval_score: float
+    crag_retries: int                # secondary-retrieval loop guard
+
+    # --- Phase 4: generation + Self-RAG reflection ---
     answer: str
     citations: list[dict[str, Any]]
+    reflection: dict[str, Any]       # {faithful, relevant, ok, critique}
+    generation_count: int            # regeneration loop guard
 
     # --- Audit trail (appended across every node via the `add` reducer) ---
     trace: Annotated[list[TraceEntry], add]
