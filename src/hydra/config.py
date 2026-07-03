@@ -60,8 +60,14 @@ class Settings:
     # --- Phase 3: Vectorless / PageIndex ---
     enable_pageindex: bool = True                  # route to tree search when a tree is available
     pageindex_max_depth: int = 4                   # max Root->...->leaf descent
-    pageindex_top_docs: int = 1                    # how many top hybrid docs to navigate
+    pageindex_top_docs: int = 1                    # how many top-voted docs to navigate
     pageindex_max_nodes: int = 3                   # max intact nodes returned
+    pageindex_beam_width: int = 2                  # tree-search beam (1 = greedy)
+    pageindex_follow_refs: bool = True             # follow "see Note X" cross-references
+    pageindex_doc_vote_k: int = 5                  # top-k chunks vote for the target doc
+
+    # --- SOTA fixes: program-of-thought numeric generation ---
+    enable_pot: bool = True                        # allow generate to emit+execute Python for math
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -109,4 +115,8 @@ class Settings:
             pageindex_max_depth=int(os.getenv("HYDRA_PAGEINDEX_MAX_DEPTH", "4")),
             pageindex_top_docs=int(os.getenv("HYDRA_PAGEINDEX_TOP_DOCS", "1")),
             pageindex_max_nodes=int(os.getenv("HYDRA_PAGEINDEX_MAX_NODES", "3")),
+            pageindex_beam_width=int(os.getenv("HYDRA_PAGEINDEX_BEAM_WIDTH", "2")),
+            pageindex_follow_refs=_flag("HYDRA_PAGEINDEX_FOLLOW_REFS", True),
+            pageindex_doc_vote_k=int(os.getenv("HYDRA_PAGEINDEX_DOC_VOTE_K", "5")),
+            enable_pot=_flag("HYDRA_ENABLE_POT", True),
         )

@@ -38,6 +38,45 @@ def test_reflect_marks_ok_and_not_ok():
     assert bad["reflection"]["ok"] is False
 
 
+def test_pot_executes_program_and_finalizes():
+    # First generate call emits a program; the finalize call (identified by the
+    # "Computation result" marker in the user prompt) phrases the final answer.
+    llm = ScriptedLLM({
+        "Computation result": "Gross margin was 61.3%.",
+        "generate": "```python\nrevenue = 1240  # p.42\ncogs = 480  # p.43\nanswer = round((revenue - cogs) / revenue * 100, 1)\n```",
+    })
+    node = make_generate(llm, Settings(enable_pot=True))
+    out = node({"query": "what was gross margin?", "candidates": CANDS})
+    assert out["answer"] == "Gross margin was 61.3%."
+    assert "pot=ok (61.3)" in out["trace"][0]["detail"]
+
+
+def test_pot_rejects_unsafe_program():
+    llm = ScriptedLLM({
+        "generate": "```python\nimport os\nanswer = 1\n```",
+    })
+    node = make_generate(llm, Settings(enable_pot=True))
+    out = node({"query": "q", "candidates": CANDS})
+    assert "pot=failed" in out["trace"][0]["detail"]
+    assert "import" not in out["answer"]  # raw code never leaks into the answer
+
+
+def test_pot_disabled_leaves_answer_untouched():
+    llm = ScriptedLLM({"generate": "```python\nanswer = 2\n```"})
+    node = make_generate(llm, Settings(enable_pot=False))
+    out = node({"query": "q", "candidates": CANDS})
+    assert "```python" in out["answer"]  # passthrough when the flag is off
+
+
+def test_run_program_sandbox():
+    from hydra.nodes.pot import run_program
+
+    assert run_program("answer = round(21.5 - 18.2, 1)") == ("3.3", None)
+    assert run_program("answer = __import__('os')")[1] is not None
+    assert run_program("x = 1")[1] == "program did not set `answer`"
+    assert run_program("answer = 1/0")[1].startswith("program error")
+
+
 def test_reflect_router_ends_or_regenerates_and_is_bounded():
     router = make_reflect_router(Settings(reflect_max_retries=1))
     # Faithful answer -> end.

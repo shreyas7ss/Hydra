@@ -37,6 +37,17 @@ def retrieval_metrics(
     return metrics
 
 
+def evidence_page_recall(candidate_pages: list[int | None], gold_pages: list[int]) -> float:
+    """Fraction of gold evidence pages covered by the retrieved candidates' pages.
+    A page counts as covered if a candidate sits on it or immediately adjacent
+    (sections frequently straddle page boundaries)."""
+    if not gold_pages:
+        return 0.0
+    got = {p for p in candidate_pages if p is not None}
+    covered = sum(1 for g in gold_pages if any(abs(g - p) <= 1 for p in got))
+    return covered / len(gold_pages)
+
+
 def faithfulness_proxy(answer: str, contexts: list[str]) -> float:
     """Fraction of answer terms supported by the retrieved contexts (grounding)."""
     a_terms = set(tokenize(answer))

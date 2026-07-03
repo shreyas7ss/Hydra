@@ -13,18 +13,32 @@ from hydra.llm import LLMClient
 from hydra.pageindex.search import TreeStore, tree_search
 
 
+def _source_votes(candidates: list[dict], settings: Settings) -> list[str]:
+    """All source docs ranked by rank-weighted votes over the top-k chunks — one
+    lexically-lucky chunk can no longer hijack doc selection on its own."""
+    votes: dict[str, float] = {}
+    for rank, c in enumerate(candidates[: settings.pageindex_doc_vote_k]):
+        src = (c.get("metadata") or {}).get("source")
+        if src:
+            votes[src] = votes.get(src, 0.0) + 1.0 / (rank + 1)
+    return [src for src, _ in sorted(votes.items(), key=lambda x: x[1], reverse=True)]
+
+
+def _vote_docs(candidates: list[dict], tree_store: TreeStore, settings: Settings) -> list[str]:
+    """Tree-backed docs to navigate, but only when a tree-backed doc actually wins the
+    overall vote — if a non-tree source dominates, PageIndex must not displace it."""
+    ranked = _source_votes(candidates, settings)
+    if not ranked or ranked[0] not in tree_store:
+        return []
+    return [src for src in ranked if src in tree_store][: settings.pageindex_top_docs]
+
+
 def make_pageindex_search(tree_store: TreeStore, llm: LLMClient, settings: Settings):
     """Build the ``pageindex_tree_search`` node bound to a TreeStore + LLM."""
 
     def pageindex_tree_search(state: dict) -> dict:
         candidates = state.get("candidates", []) or []
-
-        # Which of the top hybrid docs have a tree to navigate?
-        targets: list[str] = []
-        for c in candidates[: settings.pageindex_top_docs]:
-            src = (c.get("metadata") or {}).get("source")
-            if src and src in tree_store and src not in targets:
-                targets.append(src)
+        targets = _vote_docs(candidates, tree_store, settings)
 
         if not targets:
             return {
@@ -37,11 +51,12 @@ def make_pageindex_search(tree_store: TreeStore, llm: LLMClient, settings: Setti
         paths: list[str] = []
         for src in targets:
             tree = tree_store.get(src)
-            nodes, path = tree_search(tree, state["query"], llm, settings)
+            nodes, tree_paths = tree_search(tree, state["query"], llm, settings)
             results.extend(nodes)
-            paths.append(" > ".join(path))
+            paths.extend(tree_paths)
 
-        results = results[: settings.pageindex_max_nodes]
+        # +2 headroom so cross-referenced nodes appended by tree_search survive the cap.
+        results = results[: settings.pageindex_max_nodes + 2]
         return {
             "candidates": [r.as_dict() for r in results],
             "retrieval_strategy": "pageindex",
@@ -61,7 +76,6 @@ def make_retrieval_router(tree_store: TreeStore, settings: Settings):
         candidates = state.get("candidates", []) or []
         if not candidates:
             return "evaluate"
-        top_source = (candidates[0].get("metadata") or {}).get("source")
-        return "pageindex" if top_source in tree_store else "evaluate"
+        return "pageindex" if _vote_docs(candidates, tree_store, settings) else "evaluate"
 
     return route_retrieval

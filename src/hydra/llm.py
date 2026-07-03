@@ -187,6 +187,19 @@ class EchoLLM:
                 {"faithful": faithful, "relevant": True,
                  "critique": "offline heuristic reflection"}
             )
+        if "TASK: judge" in system:
+            # Correct iff every number in the gold answer appears in the candidate.
+            gold_part = user.split("Gold answer:", 1)[-1].split("Candidate answer:", 1)[0]
+            cand_part = user.split("Candidate answer:", 1)[-1]
+            gold_nums = set(re.findall(r"\d+(?:\.\d+)?", gold_part))
+            cand_nums = set(re.findall(r"\d+(?:\.\d+)?", cand_part))
+            correct = bool(gold_nums) and gold_nums <= cand_nums
+            if not gold_nums:  # no numbers to compare -> fall back to token overlap
+                from hydra.retrieval.text import tokenize
+
+                g, c = set(tokenize(gold_part)), set(tokenize(cand_part))
+                correct = bool(g) and len(g & c) / len(g) >= 0.6
+            return json.dumps({"correct": correct, "reason": "offline heuristic judge"})
         if "node_summary" in system:
             first = re.split(r"(?<=[.!?])\s", q.strip(), maxsplit=1)[0]
             return first[:160]
@@ -204,15 +217,17 @@ class EchoLLM:
             question_part = user.split("Children:", 1)[0]
             children_part = user.split("Children:", 1)[-1]
             q_terms = set(tokenize(question_part))
-            best_idx, best_score = -1, 0
+            scored: list[tuple[int, int]] = []
             for line in children_part.splitlines():
                 m = re.match(r"\s*(\d+)\.", line)
                 if not m:
                     continue
-                score = len(q_terms & set(tokenize(line)))
-                if score > best_score:
-                    best_score, best_idx = score, int(m.group(1))
-            return json.dumps({"choice": best_idx, "reason": "offline heuristic navigation"})
+                overlap = len(q_terms & set(tokenize(line)))
+                if overlap > 0:
+                    scored.append((overlap, int(m.group(1))))
+            scored.sort(key=lambda x: (-x[0], x[1]))
+            return json.dumps({"choices": [idx for _, idx in scored[:2]],
+                               "reason": "offline heuristic navigation"})
         return ""
 
 

@@ -15,8 +15,9 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class EvalExample:
     query: str
-    relevant_ids: list[str]          # gold doc IDs (known source spans)
-    answer: str | None = None        # optional reference answer (for Phase 4 metrics)
+    relevant_ids: list[str] = field(default_factory=list)  # gold doc/node IDs
+    answer: str | None = None        # gold answer (enables the correctness judge)
+    evidence_pages: list[int] = field(default_factory=list)  # gold physical pages
     metadata: dict = field(default_factory=dict)
 
 
@@ -51,8 +52,9 @@ def load_dataset(path: str) -> list[EvalExample]:
             examples.append(
                 EvalExample(
                     query=obj["query"],
-                    relevant_ids=list(obj["relevant_ids"]),
+                    relevant_ids=list(obj.get("relevant_ids", [])),
                     answer=obj.get("answer"),
+                    evidence_pages=[int(p) for p in obj.get("evidence_pages", [])],
                     metadata=obj.get("metadata", {}),
                 )
             )

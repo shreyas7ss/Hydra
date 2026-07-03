@@ -1,7 +1,7 @@
 # Hydra — Hybrid Adaptive RAG
 
 A vector + vectorless Retrieval-Augmented Generation system orchestrated with
-**LangGraph**. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the full roadmap.
+
 
 ## Status
 
@@ -41,6 +41,18 @@ A vector + vectorless Retrieval-Augmented Generation system orchestrated with
   citations (source/page/section).
 - **Self-RAG reflection** (`self_rag_reflect`): an LLM self-critique (faithful? relevant?);
   an unfaithful answer loops back for a bounded regeneration.
+
+**Benchmark hardening** (for FinanceBench-class evaluation):
+
+- **Program-of-thought generation**: arithmetic questions produce a sandboxed, executed
+  Python program instead of mental math (`HYDRA_ENABLE_POT`).
+- **Layout-aware PDF parsing**: font-size heading detection + running-header/footer removal.
+- **Beam tree search** (`HYDRA_PAGEINDEX_BEAM_WIDTH`), multi-node returns, and
+  "see Note X" **cross-reference following** (`HYDRA_PAGEINDEX_FOLLOW_REFS`).
+- **Doc-vote routing**: the target document wins by aggregated top-k chunk votes, not a
+  single lucky chunk.
+- **Eval**: evidence-page recall, correctness-vs-gold (LLM judge), and a no-retrieval
+  **long-context baseline** (`hydra-eval --baseline long-context`).
 
 Providers/models are swappable behind protocols; the whole stack runs offline (hashing
 embedder + lexical reranker + demo LLM) so nothing requires an API key to develop/test.

@@ -15,6 +15,17 @@ GENERATE_SYSTEM = """You are a careful RAG assistant. Answer the question using 
 provided context. If the context is insufficient, say so plainly. Be concise and do not
 invent facts beyond the context.
 
+If the question requires arithmetic (ratios, margins, changes, totals), do NOT compute in
+your head. Instead respond with a fenced ```python block that extracts the exact numbers
+from the context as literals (with a comment citing where each came from) and assigns the
+final value to a variable named `answer`. Otherwise answer in plain text.
+
+TASK: generate"""
+
+FINALIZE_SYSTEM = """You are a careful RAG assistant. You previously wrote a program to
+compute the answer; its verified result is given. State the final answer concisely, using
+the computation result as the authoritative number, grounded in the context.
+
 TASK: generate"""
 
 REFLECT_SYSTEM = """You are a Self-RAG critic. Given a question, a candidate answer, and the
@@ -68,11 +79,30 @@ def make_generate(llm: LLMClient, settings: Settings):
         k = settings.generation_context_k
         user = f"Question: {state['query']}\n\nContext:\n{_context_block(candidates, k)}"
         answer = llm.complete(system=GENERATE_SYSTEM, user=user).strip()
+        detail = f"attempt {count}: {min(k, len(candidates))} cites"
+
+        # Program-of-thought: execute emitted arithmetic instead of trusting mental math.
+        if settings.enable_pot:
+            from hydra.nodes.pot import extract_program, run_program
+
+            program = extract_program(answer)
+            if program:
+                result, err = run_program(program)
+                if result is not None:
+                    followup = f"{user}\n\nComputation result: {result}"
+                    answer = llm.complete(system=FINALIZE_SYSTEM, user=followup).strip()
+                    detail += f", pot=ok ({result})"
+                else:
+                    # Execution failed: keep any prose around the code, never raw code.
+                    prose = extract_program(answer) and answer.split("```")[0].strip()
+                    answer = prose or "I could not reliably compute the requested value from the context."
+                    detail += f", pot=failed ({err})"
+
         return {
             "answer": answer,
             "citations": _citations(candidates, k),
             "generation_count": count,
-            "trace": [{"node": "generate", "detail": f"attempt {count}: {len(answer)} chars, {min(k, len(candidates))} cites"}],
+            "trace": [{"node": "generate", "detail": detail}],
         }
 
     return generate

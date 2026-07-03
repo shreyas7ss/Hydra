@@ -25,6 +25,8 @@ def render_text(report: EvalReport, *, label: str = "") -> str:
             f"  precision={agg.get(f'precision@{k}', 0):.3f}"
         )
     lines.append(f"  MRR={agg.get('mrr', 0):.3f}")
+    if "evidence_page_recall" in agg:
+        lines.append(f"  evidence_page_recall={agg['evidence_page_recall']:.3f}")
 
     lines.append("\nOps / Retrieval Tax:")
     lines.append(
@@ -39,10 +41,13 @@ def render_text(report: EvalReport, *, label: str = "") -> str:
 
     lines.append("\nGeneration quality:")
     if report.generation_active:
-        lines.append(
+        gen_line = (
             f"  faithfulness={agg.get('faithfulness', 0):.3f}"
             f"  answer_relevance={agg.get('answer_relevance', 0):.3f}"
         )
+        if "correctness" in agg:
+            gen_line += f"  correctness={agg['correctness']:.3f}"
+        lines.append(gen_line)
     else:
         lines.append("  n/a - no generator yet (activates in Phase 4)")
 

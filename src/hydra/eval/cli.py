@@ -19,6 +19,12 @@ from hydra.eval.report import render_text
 from hydra.llm import build_llm
 
 
+def _load_corpus_docs(corpus_path: str):
+    from hydra.cli import _load_corpus
+
+    return _load_corpus(corpus_path)
+
+
 def _build_retriever(settings: Settings, *, demo: bool, corpus_path: str | None):
     if corpus_path:
         from hydra.cli import _load_corpus
@@ -44,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
     parser.add_argument("--min-hit-rate", type=float, default=0.0,
                         help="fail (exit 1) if mean hit_rate@3 is below this (CI gate)")
+    parser.add_argument("--baseline", choices=["long-context"],
+                        help="run a no-retrieval baseline instead of the graph")
     args = parser.parse_args(argv)
 
     settings = Settings.from_env()
@@ -55,6 +63,24 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     dataset = load_dataset(args.dataset) if args.dataset else sample_golden_set()
+
+    if args.baseline == "long-context":
+        from hydra.eval.runner import evaluate_long_context
+
+        if args.corpus:
+            docs = _load_corpus_docs(args.corpus)
+        else:
+            from hydra.sample_data import sample_documents
+
+            docs = sample_documents()
+        corpus_text = "\n\n".join(d.text for d in docs)
+        report = evaluate_long_context(dataset, llm=llm, corpus_text=corpus_text)
+        if args.json:
+            print(json.dumps(report.to_dict(), indent=2))
+        else:
+            print(render_text(report, label="baseline: long-context (no retrieval)"))
+        return 0
+
     report = evaluate(dataset, llm=llm, settings=settings, retriever=retriever)
 
     if args.json:

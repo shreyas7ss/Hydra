@@ -15,12 +15,28 @@ from hydra.config import Settings
 from hydra.eval.dataset import EvalExample
 from hydra.eval.metrics import (
     answer_relevance_proxy,
+    evidence_page_recall,
     faithfulness_proxy,
     percentile,
     retrieval_metrics,
 )
 from hydra.graph import run_query
-from hydra.llm import LLMClient
+from hydra.llm import LLMClient, parse_json
+
+JUDGE_SYSTEM = """You are grading a question-answering system against a gold answer.
+Judge whether the candidate answer is factually equivalent to the gold answer for the
+question (numeric values must match after rounding; wording may differ; extra correct
+detail is fine; missing or wrong values are incorrect).
+
+Respond with ONLY JSON: {"correct": true|false, "reason": "<short>"}
+TASK: judge"""
+
+
+def judge_correctness(llm: LLMClient, question: str, gold: str, candidate: str) -> float:
+    """LLM-as-judge correctness vs the gold answer. Returns 1.0 / 0.0."""
+    user = f"Question: {question}\n\nGold answer: {gold}\n\nCandidate answer: {candidate}"
+    data = parse_json(llm.complete(system=JUDGE_SYSTEM, user=user)) or {}
+    return 1.0 if data.get("correct") is True else 0.0
 
 
 class InstrumentedLLM:
@@ -92,6 +108,7 @@ def evaluate(
     llm: LLMClient,
     settings: Settings,
     retriever=None,
+    tree_store=None,
     k_values: tuple[int, ...] = (1, 3, 5, 10),
 ) -> EvalReport:
     instrumented = InstrumentedLLM(llm)
@@ -100,12 +117,17 @@ def evaluate(
 
     for ex in dataset:
         t0 = perf_counter()
-        state = run_query(ex.query, llm=instrumented, settings=settings, retriever=retriever)
+        state = run_query(ex.query, llm=instrumented, settings=settings,
+                          retriever=retriever, tree_store=tree_store)
         latency = perf_counter() - t0
 
         candidates = state.get("candidates", []) or []
         ranked_ids = [c["id"] for c in candidates]
         metrics = retrieval_metrics(ranked_ids, ex.relevant_ids, k_values)
+
+        if ex.evidence_pages:
+            pages = [(c.get("metadata") or {}).get("page") for c in candidates]
+            metrics["evidence_page_recall"] = evidence_page_recall(pages, ex.evidence_pages)
 
         answer = state.get("answer")
         if answer:
@@ -113,6 +135,8 @@ def evaluate(
             contexts = [c["text"] for c in candidates]
             metrics["faithfulness"] = faithfulness_proxy(answer, contexts)
             metrics["answer_relevance"] = answer_relevance_proxy(answer, ex.query)
+            if ex.answer:
+                metrics["correctness"] = judge_correctness(instrumented, ex.query, ex.answer, answer)
 
         results.append(
             QueryResult(
@@ -125,6 +149,15 @@ def evaluate(
             )
         )
 
+    return _build_report(results, instrumented, k_values, generation_active)
+
+
+def _build_report(
+    results: list[QueryResult],
+    instrumented: InstrumentedLLM,
+    k_values: tuple[int, ...],
+    generation_active: bool,
+) -> EvalReport:
     # Aggregate each metric key across queries (only where present).
     metric_keys: list[str] = []
     for r in results:
@@ -160,3 +193,46 @@ def evaluate(
         k_values=k_values,
         generation_active=generation_active,
     )
+
+
+LONG_CONTEXT_SYSTEM = """You are answering questions about the document(s) provided in
+full. Answer concisely using only the document contents; compute carefully when the
+question requires arithmetic.
+
+TASK: generate"""
+
+
+def evaluate_long_context(
+    dataset: list[EvalExample],
+    *,
+    llm: LLMClient,
+    corpus_text: str,
+    k_values: tuple[int, ...] = (1, 3, 5, 10),
+) -> EvalReport:
+    """Baseline: no retrieval — the entire corpus is stuffed into every prompt.
+
+    The strong-but-expensive comparator any retrieval claim must beat on accuracy
+    or crush on tokens/latency. Retrieval metrics are meaningless here and omitted.
+    """
+    instrumented = InstrumentedLLM(llm)
+    results: list[QueryResult] = []
+
+    for ex in dataset:
+        t0 = perf_counter()
+        answer = instrumented.complete(
+            system=LONG_CONTEXT_SYSTEM,
+            user=f"Question: {ex.query}\n\nContext:\n{corpus_text}",
+        ).strip()
+        latency = perf_counter() - t0
+
+        metrics: dict[str, float] = {}
+        if ex.answer:
+            metrics["correctness"] = judge_correctness(instrumented, ex.query, ex.answer, answer)
+        results.append(
+            QueryResult(
+                example=ex, ranked_ids=[], metrics=metrics,
+                latency_s=latency, intent="long-context", retrieval_path="long-context",
+            )
+        )
+
+    return _build_report(results, instrumented, k_values, generation_active=True)
