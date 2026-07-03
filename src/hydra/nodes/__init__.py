@@ -14,6 +14,7 @@ from hydra.nodes.crag import (
 )
 from hydra.nodes.downstream import make_direct_lookup, make_hybrid_retrieve
 from hydra.nodes.generate import make_generate, make_reflect_router, make_self_rag_reflect
+from hydra.nodes.pageindex import make_pageindex_search, make_retrieval_router
 from hydra.nodes.router import intent_router, make_route_intent
 from hydra.nodes.transform import make_transform_query
 
@@ -34,4 +35,7 @@ __all__ = [
     "make_generate",
     "make_self_rag_reflect",
     "make_reflect_router",
+    # Phase 3 — PageIndex
+    "make_pageindex_search",
+    "make_retrieval_router",
 ]

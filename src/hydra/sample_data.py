@@ -64,3 +64,33 @@ SAMPLE_DOCUMENTS: list[Document] = [
 
 def sample_documents() -> list[Document]:
     return list(SAMPLE_DOCUMENTS)
+
+
+# --- Phase 3: a small hierarchical document for PageIndex demos --------------- #
+# The Margins node deliberately keeps a table AND its footnote together, so tree
+# search can demonstrate returning intact context (footnote never severed from table).
+SAMPLE_SECTIONS: list[dict] = [
+    {"title": "Annual Report 2023", "level": 1, "page": 1,
+     "content": "Overview of the fiscal year 2023 results and position."},
+    {"title": "Results of Operations", "level": 2, "page": 40,
+     "content": "Discussion of revenue and profitability for fiscal 2023."},
+    {"title": "Revenue", "level": 3, "page": 42,
+     "content": "Total net revenue was $1.24 billion in 2023, up from $1.05 billion in 2022, "
+                "driven by growth in the cloud segment."},
+    {"title": "Margins", "level": 3, "page": 43,
+     "content": "Operating margin expanded in 2023.\n"
+                "Year | Operating margin | Gross margin\n"
+                "2022 | 18.2% | 61.0%\n"
+                "2023 | 21.5% | 63.4%\n"
+                "Footnote 1: the 2023 operating margin excludes a one-time $12M restructuring "
+                "charge; including it, operating margin was 20.6%."},
+    {"title": "Risk Factors", "level": 2, "page": 21,
+     "content": "The company faces supply-chain risk concentrated in a few component suppliers."},
+]
+
+
+def sample_tree(llm, doc_id: str = "Annual Report 2023"):
+    """Build the demo PageTree (structured Mode-1 construction with page numbers)."""
+    from hydra.pageindex.build import build_tree_from_sections
+
+    return build_tree_from_sections(doc_id, SAMPLE_SECTIONS, llm, source=doc_id)

@@ -43,6 +43,9 @@ class RAGState(TypedDict, total=False):
     retrieval_path: str
     candidates: list[dict[str, Any]]
 
+    # --- Phase 3: PageIndex ---
+    retrieval_strategy: str          # "hybrid" | "pageindex"
+
     # --- Phase 4: Corrective RAG quality gate ---
     retrieval_confidence: str        # "high" | "medium" | "low"
     retrieval_score: float

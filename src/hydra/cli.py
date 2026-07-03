@@ -34,20 +34,36 @@ def _load_corpus(path: str):
     return docs
 
 
-def _build_retriever(settings: Settings, *, demo: bool, corpus_path: str | None):
-    """Build a retriever when we have a corpus; otherwise return None (stub retrieval)."""
-    if corpus_path:
-        docs = _load_corpus(corpus_path)
-    elif demo:
-        from hydra.sample_data import sample_documents
+def _build_retrieval(settings: Settings, llm, *, demo: bool, corpus_path: str | None, pdf_path: str | None):
+    """Build (retriever, tree_store). PDF/demo also register a PageIndex tree whose
+    flattened nodes are indexed into the hybrid coarse filter."""
+    from hydra.pageindex import build_tree_from_pdf, flatten_to_documents
+    from hydra.pageindex.search import TreeStore
 
-        docs = sample_documents()
-    else:
-        return None
+    docs = []
+    tree_store = TreeStore()
+
+    if pdf_path:
+        tree = build_tree_from_pdf(pdf_path, llm)
+        tree_store.add(tree)
+        docs += flatten_to_documents(tree)
+    if corpus_path:
+        docs += _load_corpus(corpus_path)
+    if demo:
+        from hydra.sample_data import sample_documents, sample_tree
+
+        docs += sample_documents()
+        tree = sample_tree(llm)
+        tree_store.add(tree)
+        docs += flatten_to_documents(tree)
+
+    if not docs:
+        return None, tree_store
 
     from hydra.retrieval import HybridRetriever
 
-    return HybridRetriever.from_settings(docs, settings=settings, demo=demo)
+    retriever = HybridRetriever.from_settings(docs, settings=settings, demo=demo)
+    return retriever, tree_store
 
 
 def _print_result(query: str, state: dict) -> None:
@@ -56,6 +72,9 @@ def _print_result(query: str, state: dict) -> None:
     if state.get("intent_reasoning"):
         print(f"Reason: {state['intent_reasoning']}")
     print(f"Path:   {state.get('retrieval_path')}")
+    if state.get("retrieval_strategy"):
+        print(f"Strategy: {state['retrieval_strategy']} (hybrid coarse filter -> "
+              f"{'PageIndex tree search' if state['retrieval_strategy'] == 'pageindex' else 'chunks'})")
     if state.get("retrieval_confidence"):
         print(f"CRAG:   {state['retrieval_confidence']} confidence "
               f"(score={state.get('retrieval_score', 0):.2f})")
@@ -108,18 +127,23 @@ def main(argv: list[str] | None = None) -> int:
                         help="offline mode: demo LLM + hashing embedder + lexical reranker")
     parser.add_argument("--corpus", metavar="PATH",
                         help="JSONL corpus to index ({id, text, metadata} per line)")
+    parser.add_argument("--pdf", metavar="PATH",
+                        help="ingest a PDF: parse -> PageIndex tree -> index nodes + register tree")
     parser.add_argument("--json", action="store_true", help="print the final state as JSON")
     args = parser.parse_args(argv)
 
     settings = Settings.from_env()
     try:
         llm = build_llm(settings, demo=args.demo)
-        retriever = _build_retriever(settings, demo=args.demo, corpus_path=args.corpus)
+        retriever, tree_store = _build_retrieval(
+            settings, llm, demo=args.demo, corpus_path=args.corpus, pdf_path=args.pdf
+        )
     except (RuntimeError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    state = run_query(args.query, llm=llm, settings=settings, retriever=retriever)
+    state = run_query(args.query, llm=llm, settings=settings,
+                      retriever=retriever, tree_store=tree_store)
 
     if args.json:
         print(json.dumps(state, indent=2, default=str))

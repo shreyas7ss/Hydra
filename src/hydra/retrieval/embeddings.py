@@ -76,10 +76,39 @@ class OpenAIEmbedder:
         return [item.embedding for item in resp.data]
 
 
+class GeminiEmbedder:
+    def __init__(self, model: str, api_key: str | None, dim: int = 768) -> None:
+        try:
+            from google import genai
+        except ImportError as exc:  # pragma: no cover - optional extra
+            raise RuntimeError(
+                "The 'gemini' extra is not installed. Run `uv sync --extra gemini`, "
+                "or use the offline hashing embedder (HYDRA_EMBEDDING_PROVIDER=hashing)."
+            ) from exc
+        self._client = genai.Client(api_key=api_key)
+        self.model = model
+        self._dim = dim
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        resp = self._client.models.embed_content(model=self.model, contents=texts)
+        return [list(e.values) for e in resp.embeddings]
+
+
 def build_embedder(settings, *, demo: bool = False) -> Embedder:
     provider = "hashing" if demo else settings.embedding_provider.lower()
     if provider == "hashing":
         return HashingEmbedder(dim=settings.embedding_dim)
+    if provider == "gemini":
+        if not settings.google_api_key:
+            raise RuntimeError(
+                "GOOGLE_API_KEY (or GEMINI_API_KEY) is not set for the Gemini embedder. "
+                "Set it in .env, or use HYDRA_EMBEDDING_PROVIDER=hashing (offline)."
+            )
+        return GeminiEmbedder(model=settings.embedding_model, api_key=settings.google_api_key)
     if provider == "openai":
         if not settings.openai_api_key:
             raise RuntimeError(

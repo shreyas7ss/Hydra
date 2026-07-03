@@ -84,6 +84,37 @@ class OpenAIClient:
 
 
 # --------------------------------------------------------------------------- #
+# Real provider — Google Gemini.
+# --------------------------------------------------------------------------- #
+class GeminiClient:
+    def __init__(self, model: str, api_key: str | None, temperature: float = 0.0) -> None:
+        try:
+            from google import genai
+        except ImportError as exc:  # pragma: no cover - optional extra
+            raise RuntimeError(
+                "The 'gemini' extra is not installed. Run `uv sync --extra gemini`, "
+                "or use the offline demo (`hydra --demo`)."
+            ) from exc
+        self._genai = genai
+        self._client = genai.Client(api_key=api_key)
+        self.model = model
+        self.temperature = temperature
+
+    def complete(self, *, system: str, user: str) -> str:
+        from google.genai import types
+
+        resp = self._client.models.generate_content(
+            model=self.model,
+            contents=user,
+            config=types.GenerateContentConfig(
+                system_instruction=system,
+                temperature=self.temperature,
+            ),
+        )
+        return resp.text or ""
+
+
+# --------------------------------------------------------------------------- #
 # Offline demo LLM — deterministic heuristics, no network.
 # --------------------------------------------------------------------------- #
 class EchoLLM:
@@ -138,12 +169,12 @@ class EchoLLM:
                  "reasoning": "offline heuristic retrieval grader"}
             )
         if "generate" in system:
-            # Ground the answer in the supplied context (first passage).
-            ctx = user.split("Context:", 1)[-1].strip()
-            first = ctx.split("\n", 1)[0].strip() if ctx else ""
-            if not first:
+            # Ground the answer in the supplied context (flattened top passage).
+            ctx = user.split("Context:", 1)[-1]
+            flat = " ".join(ctx.split())
+            if not flat:
                 return "I don't have enough retrieved context to answer that."
-            return f"Based on the retrieved context: {first[:220]}"
+            return f"Based on the retrieved context: {flat[:260]}"
         if "reflect" in system:
             # Faithful if the answer's content words are supported by the context.
             from hydra.retrieval.text import tokenize
@@ -156,6 +187,32 @@ class EchoLLM:
                 {"faithful": faithful, "relevant": True,
                  "critique": "offline heuristic reflection"}
             )
+        if "node_summary" in system:
+            first = re.split(r"(?<=[.!?])\s", q.strip(), maxsplit=1)[0]
+            return first[:160]
+        if "segment" in system:
+            # Split raw text into sections on blank lines; first line is the title.
+            blocks = [b.strip() for b in re.split(r"\n\s*\n", q) if b.strip()]
+            sections = []
+            for b in blocks:
+                lines = b.split("\n", 1)
+                sections.append({"title": lines[0][:80], "content": lines[1] if len(lines) > 1 else ""})
+            return json.dumps(sections or [{"title": "Document", "content": q}])
+        if "tree_nav" in system:
+            from hydra.retrieval.text import tokenize
+
+            question_part = user.split("Children:", 1)[0]
+            children_part = user.split("Children:", 1)[-1]
+            q_terms = set(tokenize(question_part))
+            best_idx, best_score = -1, 0
+            for line in children_part.splitlines():
+                m = re.match(r"\s*(\d+)\.", line)
+                if not m:
+                    continue
+                score = len(q_terms & set(tokenize(line)))
+                if score > best_score:
+                    best_score, best_idx = score, int(m.group(1))
+            return json.dumps({"choice": best_idx, "reason": "offline heuristic navigation"})
         return ""
 
 
@@ -195,6 +252,17 @@ def build_llm(settings, *, demo: bool = False) -> LLMClient:
         return OpenAIClient(
             model=settings.llm_model,
             api_key=settings.openai_api_key,
+            temperature=settings.temperature,
+        )
+    if provider == "gemini":
+        if not settings.google_api_key:
+            raise RuntimeError(
+                "GOOGLE_API_KEY (or GEMINI_API_KEY) is not set. Set it in .env, or run "
+                "the offline demo with `hydra --demo`."
+            )
+        return GeminiClient(
+            model=settings.llm_model,
+            api_key=settings.google_api_key,
             temperature=settings.temperature,
         )
     raise RuntimeError(f"Unknown LLM provider: {settings.llm_provider!r}")

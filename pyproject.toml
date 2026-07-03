@@ -8,18 +8,20 @@ dependencies = [
     "langgraph>=0.2.0",
     "python-dotenv>=1.0",
     "qdrant-client>=1.7",  # dense HNSW store; local in-memory mode needs no server
+    "pdfplumber>=0.11",    # PageIndex hierarchical PDF parsing (pure-Python, no torch)
 ]
 
 [project.optional-dependencies]
 # Real LLM provider(s). The core graph runs offline with the bundled demo LLM,
 # so these stay optional until a provider is chosen (see plan §8 decision #2).
 openai = ["openai>=1.30"]
+gemini = ["google-genai>=0.3"]
 # Production cross-encoder reranker (heavy: pulls torch). Offline default is the
 # lightweight LexicalReranker; enable this for the directive-mandated cross-encoder.
 rerank = ["sentence-transformers>=2.2"]
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "fpdf2>=2.7"]  # fpdf2 generates fixture PDFs for parser tests
 
 [project.scripts]
 hydra = "hydra.cli:main"

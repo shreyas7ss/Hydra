@@ -24,6 +24,14 @@ A vector + vectorless Retrieval-Augmented Generation system orchestrated with
 - Every candidate carries page/section metadata + which retriever lists surfaced it
   (audit trail).
 
+**Phase 3 — Vectorless / PageIndex** (done):
+
+- **Hybrid as coarse filter, then tree.** `hybrid_retrieve` narrows to the candidate
+  document(s); if a PageTree exists, `pageindex_tree_search` navigates Root→Section→Page
+  and returns **intact nodes** (a section with its table + footnote together), never fragments.
+- **Real PDF ingestion** (`--pdf`) via `pdfplumber`, with a **TOC fallback cascade**
+  (page-numbered → un-numbered → pure-LLM segmentation) and per-node LLM summaries.
+
 **Phase 4 — Corrective RAG (CRAG) + generation + Self-RAG** (done):
 
 - **CRAG quality gate** (`retrieval_evaluator`): an LLM grades retrieval high/medium/low.
@@ -40,20 +48,25 @@ embedder + lexical reranker + demo LLM) so nothing requires an API key to develo
 ## Quickstart
 
 ```bash
-uv sync                       # core deps (langgraph, qdrant-client, dotenv)
+uv sync                       # core deps (langgraph, qdrant-client, pdfplumber, dotenv)
 uv sync --extra openai        # add OpenAI LLM + embeddings (optional)
+uv sync --extra gemini        # add Google Gemini LLM + embeddings (optional)
 uv sync --extra rerank        # add the cross-encoder reranker (heavy: torch)
 
-# Offline demo — no API key required (real retrieval over a bundled sample corpus):
-uv run hydra --demo "how did operating margin change from 2022 to 2023 and why?"
+# Offline demo — no API key required (real retrieval over a bundled sample corpus + tree):
+uv run hydra --demo "what drove the change in operating margin, including the footnote?"
 uv run hydra --demo "clause 7.2 limitation of liability"
 
-# Point at your own corpus (JSONL: {"id","text","metadata"} per line):
-uv run hydra --demo --corpus docs.jsonl "your question"
+# Ingest a real PDF (parse -> PageIndex tree -> navigate):
+uv run hydra --demo --pdf report.pdf "what quarterly dividend was declared?"
 
-# With configured providers (copy .env.example -> .env, set OPENAI_API_KEY):
+# With configured providers (copy .env.example -> .env; set GOOGLE_API_KEY or OPENAI_API_KEY):
 uv run hydra --corpus docs.jsonl "what was net revenue in 2023?"
 ```
+
+**LLM provider** is set by `HYDRA_LLM_PROVIDER` (`openai` or `gemini`); the model default is
+provider-aware (`gpt-4o` / `gemini-2.5-flash`). Set `HYDRA_EMBEDDING_PROVIDER=gemini` to run
+retrieval on Gemini embeddings too. Everything also runs fully offline via `--demo`.
 
 ## Evaluate (Phase 0 harness)
 
@@ -89,6 +102,12 @@ src/hydra/
     downstream.py     hybrid_retrieve / direct_lookup (retriever-backed, stub if none)
     crag.py           retrieval_evaluator / secondary_retrieve / ask_user / crag_router
     generate.py       generate / self_rag_reflect / reflect_router
+    pageindex.py      pageindex_tree_search / route_retrieval
+  pageindex/          Phase 3
+    tree.py           PageNode / PageTree / full_text / flatten_to_documents
+    parse.py          pdfplumber PDF parsing -> sections
+    build.py          tree construction + TOC fallback cascade + LLM summaries
+    search.py         TreeStore + reasoning-based tree traversal
   retrieval/          Phase 2
     text.py           shared tokenizer
     documents.py      Document / ScoredDoc

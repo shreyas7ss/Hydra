@@ -21,9 +21,11 @@ def _flag(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     # LLM provider — swappable (plan §8 decision #2). The graph is provider-agnostic.
+    # Supported: "openai", "gemini".
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o"
     openai_api_key: str | None = None
+    google_api_key: str | None = None
     temperature: float = 0.0
 
     # Phase 1 query-transform feature flags
@@ -55,6 +57,12 @@ class Settings:
     reflect_max_retries: int = 1                   # regenerations allowed on unfaithful answers
     generation_context_k: int = 5                  # top candidates passed to the generator
 
+    # --- Phase 3: Vectorless / PageIndex ---
+    enable_pageindex: bool = True                  # route to tree search when a tree is available
+    pageindex_max_depth: int = 4                   # max Root->...->leaf descent
+    pageindex_top_docs: int = 1                    # how many top hybrid docs to navigate
+    pageindex_max_nodes: int = 3                   # max intact nodes returned
+
     @classmethod
     def from_env(cls) -> "Settings":
         # Load .env if python-dotenv is available; never hard-fail without it.
@@ -65,18 +73,26 @@ class Settings:
         except Exception:
             pass
 
+        provider = os.getenv("HYDRA_LLM_PROVIDER", "openai").lower()
+        # Provider-aware default model so Gemini doesn't inherit the OpenAI default.
+        default_model = {"openai": "gpt-4o", "gemini": "gemini-2.5-flash"}.get(provider, "gpt-4o")
+
         return cls(
-            llm_provider=os.getenv("HYDRA_LLM_PROVIDER", "openai"),
-            llm_model=os.getenv("HYDRA_LLM_MODEL", "gpt-4o"),
+            llm_provider=provider,
+            llm_model=os.getenv("HYDRA_LLM_MODEL", default_model),
             openai_api_key=os.getenv("OPENAI_API_KEY"),
+            google_api_key=os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"),
             temperature=float(os.getenv("HYDRA_TEMPERATURE", "0.0")),
             enable_multi_query=_flag("HYDRA_ENABLE_MULTI_QUERY", True),
             enable_decomposition=_flag("HYDRA_ENABLE_DECOMPOSITION", True),
             enable_hyde=_flag("HYDRA_ENABLE_HYDE", True),
             multi_query_count=int(os.getenv("HYDRA_MULTI_QUERY_COUNT", "3")),
             intent_confidence_floor=float(os.getenv("HYDRA_INTENT_CONFIDENCE_FLOOR", "0.5")),
-            embedding_provider=os.getenv("HYDRA_EMBEDDING_PROVIDER", "openai"),
-            embedding_model=os.getenv("HYDRA_EMBEDDING_MODEL", "text-embedding-3-large"),
+            embedding_provider=(_emb_provider := os.getenv("HYDRA_EMBEDDING_PROVIDER", "openai")),
+            embedding_model=os.getenv(
+                "HYDRA_EMBEDDING_MODEL",
+                "text-embedding-004" if _emb_provider.lower() == "gemini" else "text-embedding-3-large",
+            ),
             embedding_dim=int(os.getenv("HYDRA_EMBEDDING_DIM", "256")),
             reranker_provider=os.getenv("HYDRA_RERANKER_PROVIDER", "lexical"),
             reranker_model=os.getenv("HYDRA_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"),
@@ -89,4 +105,8 @@ class Settings:
             crag_max_retries=int(os.getenv("HYDRA_CRAG_MAX_RETRIES", "2")),
             reflect_max_retries=int(os.getenv("HYDRA_REFLECT_MAX_RETRIES", "1")),
             generation_context_k=int(os.getenv("HYDRA_GENERATION_CONTEXT_K", "5")),
+            enable_pageindex=_flag("HYDRA_ENABLE_PAGEINDEX", True),
+            pageindex_max_depth=int(os.getenv("HYDRA_PAGEINDEX_MAX_DEPTH", "4")),
+            pageindex_top_docs=int(os.getenv("HYDRA_PAGEINDEX_TOP_DOCS", "1")),
+            pageindex_max_nodes=int(os.getenv("HYDRA_PAGEINDEX_MAX_NODES", "3")),
         )
